@@ -13,13 +13,13 @@ extern "C" {
 
 
 struct car {
-	int pos_x;
-	int pos_y;
+	double pos_x;
+	double pos_y;
 	int width;
 	int height;
-	int speed;
-	int x_vel;
-	int y_vel;
+	double speed;
+	double x_vel;
+	double y_vel;
 	//SDL_Surface* graphics;
 };
 
@@ -141,20 +141,54 @@ int loadImage(const char *path, SDL_Surface *graphics, SDL_Surface* charset, SDL
 
 void controls(SDL_Event event, struct car* car_1, int *quit){
 	switch (event.type) {
-	case SDL_KEYDOWN:
-		if (event.key.keysym.sym == SDLK_ESCAPE) *quit = 1;
-		else if (event.key.keysym.sym == SDLK_UP) car_1->pos_y -= car_1->speed;
-		else if (event.key.keysym.sym == SDLK_DOWN) car_1->pos_y += car_1->speed;
-		else if (event.key.keysym.sym == SDLK_RIGHT) car_1->pos_x += car_1->speed;
-		else if (event.key.keysym.sym == SDLK_LEFT) car_1->pos_x -= car_1->speed;
-		break;
-	case SDL_KEYUP:
-		//etiSpeed = 1.0;
-		break;
-	case SDL_QUIT:
-		*quit = 1;
-		break;
-	};
+		case SDL_KEYDOWN:
+			switch (event.key.keysym.sym) {
+				case SDLK_ESCAPE:
+					*quit = 1;
+				case SDLK_LEFT:
+					car_1->x_vel = -1;
+					break;
+				case SDLK_RIGHT:
+					car_1->x_vel = 1;
+					break;
+				case SDLK_UP:
+					car_1->y_vel = -1;
+					break;
+				case SDLK_DOWN:
+					car_1->y_vel = 1;
+					break;
+				default:
+					break;
+			}
+		case SDL_KEYUP:
+			//etiSpeed = 1.0;
+			switch (event.key.keysym.sym) {
+			case SDLK_LEFT:
+				if (car_1->x_vel < 0)
+					car_1->x_vel = 0;
+				break;
+			case SDLK_RIGHT:
+				if (car_1->x_vel > 0)
+					car_1->x_vel = 0;
+				break;
+			case SDLK_UP:
+				if (car_1->y_vel < 0)
+					car_1->y_vel = 0;
+				break;
+			case SDLK_DOWN:
+				if (car_1->y_vel > 0)
+					car_1->y_vel = 0;
+				break;
+			default:
+				break;
+			}
+		case SDL_QUIT:
+			*quit = 1;
+			break;
+		default:
+			break;
+		};
+	
 }
 
 // main
@@ -170,7 +204,7 @@ int main(int argc, char **argv) {
 	SDL_Texture *scrtex;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
-	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT-50,50,50, 5 };
+	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT-50,50,50, 0.5,0,0 };
 	struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500 };
 
 	if(SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -249,7 +283,7 @@ int main(int argc, char **argv) {
 	double start_pos1 = SCREEN_HEIGHT-1739;
 	double start_pos2 = SCREEN_HEIGHT - 1739 -1739;
 
-	while(!quit) {
+	while (!quit) {
 		t2 = SDL_GetTicks();
 
 		// w tym momencie t2-t1 to czas w milisekundach,
@@ -269,13 +303,13 @@ int main(int argc, char **argv) {
 
 		render_road(delta, road, screen, road_graphics);
 		DrawSurface(screen, car_graphics, car_1.pos_x, car_1.pos_y);
-		
+
 		fpsTimer += delta;
-		if(fpsTimer > 0.5) {
+		if (fpsTimer > 0.5) {
 			fps = frames * 2;
 			frames = 0;
 			fpsTimer -= 0.5;
-			};
+		};
 
 		// tekst informacyjny / info text
 		//DrawRectangle(screen, 4, 4, SCREEN_WIDTH - 8, 36, czerwony, niebieski);
@@ -287,19 +321,74 @@ int main(int argc, char **argv) {
 		DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 26, text, charset);
 
 		SDL_UpdateTexture(scrtex, NULL, screen->pixels, screen->pitch);
-//		SDL_RenderClear(renderer);
+		//		SDL_RenderClear(renderer);
 		SDL_RenderCopy(renderer, scrtex, NULL, NULL);
 		SDL_RenderPresent(renderer);
 
 		// obs³uga zdarzeñ (o ile jakieœ zasz³y) / handling of events (if there were any)
-		while(SDL_PollEvent(&event)) {
-			controls(event, &car_1, &quit);
-			};
-		frames++;
-		};
-
+		while (SDL_PollEvent(&event)) {
+			switch (event.type) {
+				/* Look for a keypress */
+			case SDL_KEYDOWN:
+				/* Check the SDLKey values and move change the coords */
+				switch (event.key.keysym.sym) {
+				case SDLK_LEFT:
+					car_1.x_vel = -car_1.speed;
+					break;
+				case SDLK_RIGHT:
+					car_1.x_vel = car_1.speed;
+					break;
+				case SDLK_UP:
+					car_1.y_vel = -car_1.speed;
+					break;
+				case SDLK_DOWN:
+					car_1.y_vel = car_1.speed;
+					break;
+				case SDLK_ESCAPE:
+					quit = 1;
+				default:
+					break;
+				}
+				break;
+			case SDL_KEYUP:
+				switch (event.key.keysym.sym) {
+				case SDLK_LEFT:
+					/* We check to make sure the alien is moving */
+					/* to the left. If it is then we zero the    */
+					/* velocity. If the alien is moving to the   */
+					/* right then the right key is still press   */
+					/* so we don't tocuh the velocity            */
+					if (car_1.x_vel < 0)
+						car_1.x_vel = 0;
+					break;
+				case SDLK_RIGHT:
+					if (car_1.x_vel > 0)
+						car_1.x_vel = 0;
+					break;
+				case SDLK_UP:
+					if (car_1.y_vel < 0)
+						car_1.y_vel = 0;
+					break;
+				case SDLK_DOWN:
+					if (car_1.y_vel > 0)
+						car_1.y_vel = 0;
+					break;
+				default:
+					break;
+				}
+				break;
+			case SDL_QUIT:
+				quit = 1;
+			default:
+				break;
+			}
+		}
+		/* Update the alien position */
+		car_1.pos_x += car_1.x_vel;
+		car_1.pos_y += car_1.y_vel;
+	}
 	// zwolnienie powierzchni / freeing all surfaces
 	free_surfaces(charset, screen, scrtex, window, renderer);
 	SDL_Quit();
 	return 0;
-	};
+};
