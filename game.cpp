@@ -11,6 +11,15 @@ extern "C" {
 #define SCREEN_WIDTH	800
 #define SCREEN_HEIGHT	700
 
+//starting parameters
+#define ROAD_WIDTH 191
+#define CAR_SPEED 0.5
+
+//colors
+#define CZARNY SDL_MapRGB(screen->format, 0x00, 0x00, 0x00)
+#define ZIELONY SDL_MapRGB(screen->format, 0x00, 0xFF, 0x00);
+#define CZERWONY SDL_MapRGB(screen->format, 0xFF, 0x00, 0x00);
+#define NIEBIESKI SDL_MapRGB(screen->format, 0x11, 0x11, 0xCC);
 
 struct car {
 	double pos_x;
@@ -27,7 +36,13 @@ struct road {
 	int pos_x;
 	int pos_y;
 	int speed;
+	int width;
 	//SDL_Surface *graphics;
+};
+
+struct player {
+	struct car players_car;
+	int score;
 };
 // narysowanie napisu txt na powierzchni screen, zaczynaj¹c od punktu (x, y)
 // charset to bitmapa 128x128 zawieraj¹ca znaki
@@ -121,274 +136,191 @@ void render_road(double delta, struct road road, SDL_Surface *screen, SDL_Surfac
 	DrawSurface(screen, road_graphics, SCREEN_WIDTH / 2, start_pos2);
 }
 
-void free_surfaces(SDL_Surface *charset, SDL_Surface* screen, SDL_Texture* scrtex, SDL_Window* window, SDL_Renderer* renderer){
-	SDL_FreeSurface(charset);
-	SDL_FreeSurface(screen);
-	SDL_DestroyTexture(scrtex);
-	SDL_DestroyWindow(window);
-	SDL_DestroyRenderer(renderer);
+void free_surfaces(int count, SDL_Surface** tab[], SDL_Texture** scrtex, SDL_Surface** screen, SDL_Window** window, SDL_Renderer** renderer){
+	for (int i = 0; i < count; i++) {
+		SDL_FreeSurface(*tab[i]);
+	}
+	SDL_DestroyTexture(*scrtex);
+	SDL_DestroyWindow(*window);
+	SDL_DestroyRenderer(*renderer);
 }
 
-int loadImage(const char *path, SDL_Surface *graphics, SDL_Surface* charset, SDL_Surface* screen, SDL_Texture* scrtex, SDL_Window* window, SDL_Renderer* renderer){
-	if (graphics == NULL) {
-		printf("SDL_LoadBMP(%s.bmp) error: %s\n",path , SDL_GetError());
-		free_surfaces(charset, screen, scrtex, window, renderer);
+void keydown(SDL_Event* event, struct car* car_1, int* quit){
+	switch (event->key.keysym.sym) {
+	case SDLK_LEFT:
+		car_1->x_vel = -car_1->speed;
+		break;
+	case SDLK_RIGHT:
+		car_1->x_vel = car_1->speed;
+		break;
+	case SDLK_UP:
+		car_1->y_vel = -car_1->speed;
+		break;
+	case SDLK_DOWN:
+		car_1->y_vel = car_1->speed;
+		break;
+	case SDLK_ESCAPE:
+		*quit = 1;
+	default:
+		break;
+	}
+}
+
+void keyup(SDL_Event* event, struct car* car_1, int* quit) {
+	switch (event->key.keysym.sym) {
+	case SDLK_LEFT:
+		if (car_1->x_vel < 0)
+			car_1->x_vel = 0;
+		break;
+	case SDLK_RIGHT:
+		if (car_1->x_vel > 0)
+			car_1->x_vel = 0;
+		break;
+	case SDLK_UP:
+		if (car_1->y_vel < 0)
+			car_1->y_vel = 0;
+		break;
+	case SDLK_DOWN:
+		if (car_1->y_vel > 0)
+			car_1->y_vel = 0;
+		break;
+	default:
+		break;
+	}
+}
+
+void controls(SDL_Event* event, struct car* car_1, int* quit) {
+	while (SDL_PollEvent(event)) {
+		switch (event->type) {
+		case SDL_KEYDOWN:
+			keydown(event, car_1, quit);
+			break;
+		case SDL_KEYUP:
+			keyup(event, car_1, quit);
+			break;
+		case SDL_QUIT:
+			*quit = 1;
+		default:
+			break;
+		}
+	}
+/* Update the car position */
+		car_1->pos_x += car_1->x_vel;
+		car_1->pos_y += car_1->y_vel;
+}
+
+void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex) {
+	// tekst informacyjny / info text
+		//DrawRectangle(screen, 4, 4, SCREEN_WIDTH - 8, 36, czerwony, niebieski);
+		//            "template for the second project, elapsed time = %.1lf s  %.0lf frames / s"
+	char text[128];
+	sprintf(text, "Szablon drugiego zadania, czas trwania = %.1lf s  %.0lf klatek / s", worldTime, fps);
+	DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 10, text, charset);
+	//	      "Esc - exit, \030 - faster, \031 - slower"
+	sprintf(text, "Esc - wyjscie, \030 - przyspieszenie, \031 - zwolnienie");
+	DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 26, text, charset);
+
+	SDL_UpdateTexture(scrtex, NULL, screen->pixels, screen->pitch);
+	//		SDL_RenderClear(renderer);
+	SDL_RenderCopy(renderer, scrtex, NULL, NULL);
+	SDL_RenderPresent(renderer);
+}
+
+int initialize(SDL_Window** window, int* rc, SDL_Renderer** renderer, SDL_Surface** screen, SDL_Texture** scrtex) {
+	if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+		printf("SDL_Init error: %s\n", SDL_GetError());
+		return 1;
+	}
+	*rc = SDL_CreateWindowAndRenderer(SCREEN_WIDTH, SCREEN_HEIGHT, 0, window, renderer);
+	if (*rc != 0) {
 		SDL_Quit();
+		printf("SDL_CreateWindowAndRenderer error: %s\n", SDL_GetError());
 		return 1;
 	};
+
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+	SDL_RenderSetLogicalSize(*renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
+	SDL_SetRenderDrawColor(*renderer, 0, 0, 0, 255);
+
+	SDL_SetWindowTitle(*window, "Szablon do zdania drugiego 2017");
+
+
+	*screen = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
+		0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+
+	*scrtex = SDL_CreateTexture(*renderer, SDL_PIXELFORMAT_ARGB8888,
+		SDL_TEXTUREACCESS_STREAMING,
+		SCREEN_WIDTH, SCREEN_HEIGHT);
+	
+	// wy³¹czenie widocznoœci kursora myszy
+	SDL_ShowCursor(SDL_DISABLE);
+
 	return 0;
 }
 
-void controls(SDL_Event event, struct car* car_1, int *quit){
-	switch (event.type) {
-		case SDL_KEYDOWN:
-			switch (event.key.keysym.sym) {
-				case SDLK_ESCAPE:
-					*quit = 1;
-				case SDLK_LEFT:
-					car_1->x_vel = -1;
-					break;
-				case SDLK_RIGHT:
-					car_1->x_vel = 1;
-					break;
-				case SDLK_UP:
-					car_1->y_vel = -1;
-					break;
-				case SDLK_DOWN:
-					car_1->y_vel = 1;
-					break;
-				default:
-					break;
-			}
-		case SDL_KEYUP:
-			//etiSpeed = 1.0;
-			switch (event.key.keysym.sym) {
-			case SDLK_LEFT:
-				if (car_1->x_vel < 0)
-					car_1->x_vel = 0;
-				break;
-			case SDLK_RIGHT:
-				if (car_1->x_vel > 0)
-					car_1->x_vel = 0;
-				break;
-			case SDLK_UP:
-				if (car_1->y_vel < 0)
-					car_1->y_vel = 0;
-				break;
-			case SDLK_DOWN:
-				if (car_1->y_vel > 0)
-					car_1->y_vel = 0;
-				break;
-			default:
-				break;
-			}
-		case SDL_QUIT:
-			*quit = 1;
-			break;
-		default:
-			break;
-		};
-	
+int load_graphics(int img_number, SDL_Surface** img[], const char paths[][100], SDL_Surface** screen, SDL_Texture** scrtex, SDL_Window** window, SDL_Renderer** renderer) {
+	for (int i = 0; i < img_number; i++) {
+		*img[i] = SDL_LoadBMP(paths[i]);
+		if (*img[i] == NULL) {
+			printf("SDL_LoadBMP() error: %s\n", SDL_GetError());
+			free_surfaces(img_number, img, scrtex, screen, window, renderer);
+			SDL_Quit();
+			return 1;
+		}
+	}
+	SDL_SetColorKey(*img[0], true, 0x000000);
+	return 0;
 }
 
-// main
+void time(int* t1, int* t2, double* delta, double* worldTime) {
+	*t2 = SDL_GetTicks();
+	*delta = (*t2 - *t1) * 0.001;
+	*t1 = *t2;
+	*worldTime += *delta;
+}
 #ifdef __cplusplus
 extern "C"
 #endif
 int main(int argc, char **argv) {
-	int t1, t2, quit, frames, rc;
-	double delta, worldTime, fpsTimer, fps, distance, etiSpeed;
+	int t1, t2, quit = 0, frames = 0, rc;
+	double delta, worldTime = 0, fpsTimer = 0, fps = 0;
 	SDL_Event event;
-	SDL_Surface *screen, *charset;
-	SDL_Surface *car_graphics, *road_graphics;
+	SDL_Surface *screen, *charset, *car_graphics, *road_graphics;
 	SDL_Texture *scrtex;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
-	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT-50,50,50, 0.5,0,0 };
-	struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500 };
+	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT-50,50,50, CAR_SPEED,0,0 };
+	struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH };
 
-	if(SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-		printf("SDL_Init error: %s\n", SDL_GetError());
+	if (initialize(&window, &rc, &renderer, &screen, &scrtex) == 1) {
 		return 1;
-		}
-	rc = SDL_CreateWindowAndRenderer(SCREEN_WIDTH, SCREEN_HEIGHT, 0,
-	                                 &window, &renderer);
-	if(rc != 0) {
-		SDL_Quit();
-		printf("SDL_CreateWindowAndRenderer error: %s\n", SDL_GetError());
-		return 1;
-		};
-	
-	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-	SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
-	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+	}
 
-	SDL_SetWindowTitle(window, "Szablon do zdania drugiego 2017");
-
-
-	screen = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
-	                              0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
-
-	scrtex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
-	                           SDL_TEXTUREACCESS_STREAMING,
-	                           SCREEN_WIDTH, SCREEN_HEIGHT);
-
-
-	// wy³¹czenie widocznoœci kursora myszy
-	SDL_ShowCursor(SDL_DISABLE);
-
-	// wczytanie obrazka cs8x8.bmp
-	charset = SDL_LoadBMP("./cs8x8.bmp");
-	if(charset == NULL) {
-		printf("SDL_LoadBMP(cs8x8.bmp) error: %s\n", SDL_GetError());
-		SDL_FreeSurface(screen);
-		SDL_DestroyTexture(scrtex);
-		SDL_DestroyWindow(window);
-		SDL_DestroyRenderer(renderer);
-		SDL_Quit();
-		return 1;
-		};
+	// wczytanie obrazkow
+	SDL_Surface** tab2[3] = {&charset, &car_graphics, &road_graphics};
+	const char paths[3][100] = {"./cs8x8.bmp", "./car2.bmp", "./road_straight.bmp"};
+	load_graphics(3, tab2, paths, &screen, &scrtex, &window, &renderer);
 	SDL_SetColorKey(charset, true, 0x000000);
-	
-	car_graphics = SDL_LoadBMP("./car2.bmp");
-	if(car_graphics == NULL) {
-		printf("SDL_LoadBMP(car_graphics.bmp) error: %s\n", SDL_GetError());
-		SDL_FreeSurface(charset);
-		SDL_FreeSurface(screen);
-		SDL_DestroyTexture(scrtex);
-		SDL_DestroyWindow(window);
-		SDL_DestroyRenderer(renderer);
-		SDL_Quit();
-		return 1;
-		};
-
-	road_graphics = SDL_LoadBMP("./road_straight.bmp");
-
-	char text[128];
-	int czarny = SDL_MapRGB(screen->format, 0x00, 0x00, 0x00);
-	int zielony = SDL_MapRGB(screen->format, 0x00, 0xFF, 0x00);
-	int czerwony = SDL_MapRGB(screen->format, 0xFF, 0x00, 0x00);
-	int niebieski = SDL_MapRGB(screen->format, 0x11, 0x11, 0xCC);
 
 	t1 = SDL_GetTicks();
-
-	frames = 0;
-	fpsTimer = 0;
-	fps = 0;
-	quit = 0;
-	worldTime = 0;
-	distance = 0;
-	etiSpeed = 1;
-
 	double start_pos1 = SCREEN_HEIGHT-1739;
 	double start_pos2 = SCREEN_HEIGHT - 1739 -1739;
 
 	while (!quit) {
-		t2 = SDL_GetTicks();
+		time(&t1, &t2, &delta, &worldTime);
 
-		// w tym momencie t2-t1 to czas w milisekundach,
-		// jaki uplyna³ od ostatniego narysowania ekranu
-		// delta to ten sam czas w sekundach
-		// here t2-t1 is the time in milliseconds since
-		// the last screen was drawn
-		// delta is the same time in seconds
-		delta = (t2 - t1) * 0.001;
-		t1 = t2;
-
-		worldTime += delta;
-
-		distance += etiSpeed * delta;
-
-		SDL_FillRect(screen, NULL, czarny);
+		SDL_FillRect(screen, NULL, CZARNY);
 
 		render_road(delta, road, screen, road_graphics);
 		DrawSurface(screen, car_graphics, car_1.pos_x, car_1.pos_y);
 
-		fpsTimer += delta;
-		if (fpsTimer > 0.5) {
-			fps = frames * 2;
-			frames = 0;
-			fpsTimer -= 0.5;
-		};
-
-		// tekst informacyjny / info text
-		//DrawRectangle(screen, 4, 4, SCREEN_WIDTH - 8, 36, czerwony, niebieski);
-		//            "template for the second project, elapsed time = %.1lf s  %.0lf frames / s"
-		sprintf(text, "Szablon drugiego zadania, czas trwania = %.1lf s  %.0lf klatek / s", worldTime, fps);
-		DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 10, text, charset);
-		//	      "Esc - exit, \030 - faster, \031 - slower"
-		sprintf(text, "Esc - wyjscie, \030 - przyspieszenie, \031 - zwolnienie");
-		DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 26, text, charset);
-
-		SDL_UpdateTexture(scrtex, NULL, screen->pixels, screen->pitch);
-		//		SDL_RenderClear(renderer);
-		SDL_RenderCopy(renderer, scrtex, NULL, NULL);
-		SDL_RenderPresent(renderer);
+		print_info(worldTime, fps, charset, screen, renderer, scrtex);
 
 		// obs³uga zdarzeñ (o ile jakieœ zasz³y) / handling of events (if there were any)
-		while (SDL_PollEvent(&event)) {
-			switch (event.type) {
-				/* Look for a keypress */
-			case SDL_KEYDOWN:
-				/* Check the SDLKey values and move change the coords */
-				switch (event.key.keysym.sym) {
-				case SDLK_LEFT:
-					car_1.x_vel = -car_1.speed;
-					break;
-				case SDLK_RIGHT:
-					car_1.x_vel = car_1.speed;
-					break;
-				case SDLK_UP:
-					car_1.y_vel = -car_1.speed;
-					break;
-				case SDLK_DOWN:
-					car_1.y_vel = car_1.speed;
-					break;
-				case SDLK_ESCAPE:
-					quit = 1;
-				default:
-					break;
-				}
-				break;
-			case SDL_KEYUP:
-				switch (event.key.keysym.sym) {
-				case SDLK_LEFT:
-					/* We check to make sure the alien is moving */
-					/* to the left. If it is then we zero the    */
-					/* velocity. If the alien is moving to the   */
-					/* right then the right key is still press   */
-					/* so we don't tocuh the velocity            */
-					if (car_1.x_vel < 0)
-						car_1.x_vel = 0;
-					break;
-				case SDLK_RIGHT:
-					if (car_1.x_vel > 0)
-						car_1.x_vel = 0;
-					break;
-				case SDLK_UP:
-					if (car_1.y_vel < 0)
-						car_1.y_vel = 0;
-					break;
-				case SDLK_DOWN:
-					if (car_1.y_vel > 0)
-						car_1.y_vel = 0;
-					break;
-				default:
-					break;
-				}
-				break;
-			case SDL_QUIT:
-				quit = 1;
-			default:
-				break;
-			}
-		}
-		/* Update the alien position */
-		car_1.pos_x += car_1.x_vel;
-		car_1.pos_y += car_1.y_vel;
+		controls(&event, &car_1, &quit);
 	}
 	// zwolnienie powierzchni / freeing all surfaces
-	free_surfaces(charset, screen, scrtex, window, renderer);
+	free_surfaces(3, tab2, &scrtex, &screen, &window, &renderer);
 	SDL_Quit();
 	return 0;
 };
