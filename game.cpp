@@ -201,14 +201,14 @@ void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *pla
 	while (SDL_PollEvent(event)) {
 		switch (event->type) {
 		case SDL_KEYDOWN:
-			keydown(event, car_1, quit);
+			if (!(*pause)) keydown(event, car_1, quit);
 			break;
 		case SDL_KEYUP:
 			if (event->key.keysym.sym == 'n') newgame(player_1, car_1, worldTime);
 			if (event->key.keysym.sym == 'p') {
 				*pause = (*pause + 1) % 2;
 				printf("%d", *pause);
-				//break;
+				break;
 			}
 			keyup(event, car_1, quit);
 			break;
