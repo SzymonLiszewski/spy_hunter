@@ -12,7 +12,7 @@ extern "C" {
 #define SCREEN_HEIGHT	700
 
 //starting parameters
-#define ROAD_WIDTH 191
+#define ROAD_WIDTH 382
 #define CAR_SPEED 0.5
 
 //colors
@@ -41,8 +41,9 @@ struct road {
 };
 
 struct player {
-	struct car players_car;
-	int score;
+	//struct car players_car;
+	double score;
+	double distance;
 };
 // narysowanie napisu txt na powierzchni screen, zaczynaj¹c od punktu (x, y)
 // charset to bitmapa 128x128 zawieraj¹ca znaki
@@ -189,13 +190,26 @@ void keyup(SDL_Event* event, struct car* car_1, int* quit) {
 	}
 }
 
-void controls(SDL_Event* event, struct car* car_1, int* quit) {
+void newgame(struct player* player_1, struct car* car_1, double * worldTime) {
+	player_1->score = 0;
+	car_1->pos_x = SCREEN_WIDTH / 2;
+	car_1->pos_y = SCREEN_HEIGHT * 2 / 3;
+	*worldTime = 0;
+}
+
+void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *player_1, double *worldTime, int *pause) {
 	while (SDL_PollEvent(event)) {
 		switch (event->type) {
 		case SDL_KEYDOWN:
 			keydown(event, car_1, quit);
 			break;
 		case SDL_KEYUP:
+			if (event->key.keysym.sym == 'n') newgame(player_1, car_1, worldTime);
+			if (event->key.keysym.sym == 'p') {
+				*pause = (*pause + 1) % 2;
+				printf("%d", *pause);
+				//break;
+			}
 			keyup(event, car_1, quit);
 			break;
 		case SDL_QUIT:
@@ -209,7 +223,7 @@ void controls(SDL_Event* event, struct car* car_1, int* quit) {
 		car_1->pos_y += car_1->y_vel;
 }
 
-void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex) {
+void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, int score) {
 	// tekst informacyjny / info text
 		//DrawRectangle(screen, 4, 4, SCREEN_WIDTH - 8, 36, czerwony, niebieski);
 		//            "template for the second project, elapsed time = %.1lf s  %.0lf frames / s"
@@ -219,6 +233,9 @@ void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface*
 	//	      "Esc - exit, \030 - faster, \031 - slower"
 	sprintf(text, "Esc - wyjscie, \030 - przyspieszenie, \031 - zwolnienie");
 	DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 26, text, charset);
+
+	sprintf(text, "score: %d", score);
+	DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 36, text, charset);
 
 	SDL_UpdateTexture(scrtex, NULL, screen->pixels, screen->pitch);
 	//		SDL_RenderClear(renderer);
@@ -272,17 +289,57 @@ int load_graphics(int img_number, SDL_Surface** img[], const char paths[][100], 
 	return 0;
 }
 
-void time(int* t1, int* t2, double* delta, double* worldTime) {
+void time(int* t1, int* t2, double* delta, double* worldTime, struct player *player_1, struct car *car_1, struct road road, int pause) {
 	*t2 = SDL_GetTicks();
 	*delta = (*t2 - *t1) * 0.001;
 	*t1 = *t2;
-	*worldTime += *delta;
+	if (!pause) {
+		*worldTime += *delta;
+		player_1->distance += car_1->speed * *delta;
+		player_1->score += road.speed * (*delta) / 100;
+	}
 }
+
+void gameover(SDL_Surface** screen, SDL_Surface** charset, SDL_Renderer* renderer, SDL_Texture* scrtex, SDL_Event* event,struct player* player_1, struct car* car_1) {
+	SDL_FillRect(*screen, NULL, SDL_MapRGB((*screen)->format, 0x00, 0x00, 0x00));
+	char text[128];
+	sprintf(text, "game over");
+	DrawString(*screen, (*screen)->w / 2 - strlen(text) * 8 / 2, 100, text, *charset);
+	SDL_UpdateTexture(scrtex, NULL, (*screen)->pixels, (*screen)->pitch);
+	//		SDL_RenderClear(renderer);
+	SDL_RenderCopy(renderer, scrtex, NULL, NULL);
+	SDL_RenderPresent(renderer);
+}
+
+
+
+int collisions(struct car* car_1, struct road *road, SDL_Surface** screen, SDL_Surface** charset, struct player *player) {
+	if (car_1->pos_x + (car_1->width) / 2 > road->pos_x + (road->width) / 2){
+		printf("1");
+		//gameover(screen, charset);
+		//newgame(player, car_1);
+		return 1;
+	}
+	else if (car_1->pos_x - (car_1->width) / 2 < road->pos_x - (road->width) / 2) {
+		printf("2");
+		return 1;
+	}
+	if (car_1->pos_y - (car_1->height) / 2 < 0) {
+		car_1->pos_y = (car_1->height) / 2;
+	}
+	else if (car_1->pos_y + (car_1->height) / 2 > SCREEN_HEIGHT) {
+		car_1->pos_y = SCREEN_HEIGHT - (car_1->height) / 2;
+	}
+	return 0;
+}
+
+
+
 #ifdef __cplusplus
 extern "C"
 #endif
 int main(int argc, char **argv) {
-	int t1, t2, quit = 0, frames = 0, rc;
+	int t1, t2, quit = 0, frames = 0, rc, pause = 0, pausetime = 0;
 	double delta, worldTime = 0, fpsTimer = 0, fps = 0;
 	SDL_Event event;
 	SDL_Surface *screen, *charset, *car_graphics, *road_graphics;
@@ -291,6 +348,7 @@ int main(int argc, char **argv) {
 	SDL_Renderer *renderer;
 	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT-50,50,50, CAR_SPEED,0,0 };
 	struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH };
+	struct player player_1 = { 0, 0 };
 
 	if (initialize(&window, &rc, &renderer, &screen, &scrtex) == 1) {
 		return 1;
@@ -307,17 +365,22 @@ int main(int argc, char **argv) {
 	double start_pos2 = SCREEN_HEIGHT - 1739 -1739;
 
 	while (!quit) {
-		time(&t1, &t2, &delta, &worldTime);
+		time(&t1, &t2, &delta, &worldTime, &player_1, &car_1, road, pause); //get time and count distance
+		if (!pause) {
+			SDL_FillRect(screen, NULL, CZARNY);
 
-		SDL_FillRect(screen, NULL, CZARNY);
+			if (collisions(&car_1, &road, &screen, &charset, &player_1) == 0) {
+				render_road(delta, road, screen, road_graphics);
+				DrawSurface(screen, car_graphics, car_1.pos_x, car_1.pos_y);
+				print_info(worldTime, fps, charset, screen, renderer, scrtex, player_1.score);
+			}
+			else {
+				gameover(&screen, &charset, renderer, scrtex, &event, &player_1, &car_1);
+			}
 
-		render_road(delta, road, screen, road_graphics);
-		DrawSurface(screen, car_graphics, car_1.pos_x, car_1.pos_y);
-
-		print_info(worldTime, fps, charset, screen, renderer, scrtex);
-
+		}
 		// obs³uga zdarzeñ (o ile jakieœ zasz³y) / handling of events (if there were any)
-		controls(&event, &car_1, &quit);
+		controls(&event, &car_1, &quit, &player_1, &worldTime, &pause);
 	}
 	// zwolnienie powierzchni / freeing all surfaces
 	free_surfaces(3, tab2, &scrtex, &screen, &window, &renderer);
