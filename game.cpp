@@ -2,6 +2,10 @@
 #include<math.h>
 #include<stdio.h>
 #include<string.h>
+#include <time.h>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 extern "C" {
 #include"./SDL2-2.0.10/include/SDL.h"
@@ -38,6 +42,11 @@ struct road {
 	int speed;
 	int width;
 	//SDL_Surface *graphics;
+};
+
+struct background {
+	double start_pos1;
+	double start_pos2;
 };
 
 struct player {
@@ -120,21 +129,19 @@ void DrawRectangle(SDL_Surface *screen, int x, int y, int l, int k,
 		DrawLine(screen, x + 1, i, l - 2, 1, 0, fillColor);
 	};
 
-void render_road(double delta, struct road road, SDL_Surface *screen, SDL_Surface* road_graphics) {
-	static double start_pos1 = SCREEN_HEIGHT - 1739;
-	static double start_pos2 = SCREEN_HEIGHT - 2*1739;
-	start_pos1 += road.speed * delta;
-	start_pos2 += road.speed * delta;
+void render_road(double delta, struct road road, SDL_Surface *screen, SDL_Surface* road_graphics, struct background *background) {
+	background->start_pos1 += road.speed * delta;
+	background->start_pos2 += road.speed * delta;
 
 
-	if (start_pos1 > 1739 + SCREEN_HEIGHT) {
-		start_pos1 = -1739;
+	if (background->start_pos1 > 1739 + SCREEN_HEIGHT) {
+		background->start_pos1 = -1739;
 	};
-	if (start_pos2 > 1739 + SCREEN_HEIGHT) {
-		start_pos2 = -1739;
+	if (background->start_pos2 > 1739 + SCREEN_HEIGHT) {
+		background->start_pos2 = -1739;
 	};
-	DrawSurface(screen, road_graphics, SCREEN_WIDTH / 2, start_pos1);
-	DrawSurface(screen, road_graphics, SCREEN_WIDTH / 2, start_pos2);
+	DrawSurface(screen, road_graphics, SCREEN_WIDTH / 2, background->start_pos1);
+	DrawSurface(screen, road_graphics, SCREEN_WIDTH / 2, background->start_pos2);
 }
 
 void free_surfaces(int count, SDL_Surface** tab[], SDL_Texture** scrtex, SDL_Surface** screen, SDL_Window** window, SDL_Renderer** renderer){
@@ -197,7 +204,77 @@ void newgame(struct player* player_1, struct car* car_1, double * worldTime) {
 	*worldTime = 0;
 }
 
-void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *player_1, double *worldTime, int *pause) {
+void save(struct background background, struct car car, struct player player, double worldTime){
+	time_t timer;
+	time(&timer);
+	char file_name[128];
+	strftime(file_name,80, "saved_games\\%d.%m.%Y %H.%M.%S.txt", (localtime(&timer)));
+	FILE* file;
+	file = fopen(file_name, "w");
+	fprintf(file,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", background.start_pos1, background.start_pos2, car.pos_x, car.pos_y, car.speed, car.x_vel, car.y_vel, player.distance, player.score, worldTime);
+	fclose(file);
+}
+
+void choose_saved_game(SDL_Event* event, char file_name[], int i) {
+	int j = -1;
+	while (j<0 || j>i){
+		while (SDL_PollEvent(event)) {
+			switch (event->type) {
+			case SDL_KEYDOWN:
+				j = (int)event->key.keysym.sym-48;
+				printf("%d", j);
+				break;
+			default:
+				break;
+			}
+		}
+	}
+	i = 0;
+	for (const auto& entry : fs::directory_iterator("saved_games")) {
+		if (i==j) sprintf(file_name, "saved_games\\%s", entry.path().filename().string().c_str());
+		i++;
+	}
+}
+
+void print_load_info(SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, SDL_Event* event, char file_name[]) {
+	SDL_FillRect(screen, NULL, CZARNY);
+	char text[128] = "wczytaj zapisany stan gry";
+	DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 36, text, charset);
+	int i = 0;
+	for (const auto& entry : fs::directory_iterator("saved_games")){
+		sprintf(text, "%d: %s", i, entry.path().filename().string().c_str());
+		DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 56 + 20*i, text, charset);
+		i++;
+	}
+	SDL_UpdateTexture(scrtex, NULL, screen->pixels, screen->pitch);
+	SDL_RenderCopy(renderer, scrtex, NULL, NULL);
+	SDL_RenderPresent(renderer);
+	choose_saved_game(event, file_name, i);
+}
+
+void load(struct background* background, struct car* car, struct player* player, double* worldTime, int *t1, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, SDL_Event* event, int *pause) {
+	*t1 = 0;
+	char file_name[128];
+	print_load_info(charset, screen, renderer, scrtex, event, file_name);
+	FILE* file;
+	file = fopen(file_name, "r");
+	fscanf(file, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &(background->start_pos1), &(background->start_pos2), &(car->pos_x), &(car->pos_y), &(car->speed), &(car->x_vel), &(car->y_vel), &(player->distance), &(player->score), worldTime);
+	fclose(file);
+	//printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", background->start_pos1, background->start_pos2, car->pos_x, car->pos_y, car->speed, car->x_vel, car->y_vel, player->distance, player->score, *worldTime);
+}
+
+void update_time(int* t1, int* t2, double* delta, double* worldTime, struct player* player_1, struct car* car_1, struct road road, int pause) {
+	*t2 = SDL_GetTicks();
+	*delta = (*t2 - *t1) * 0.001;
+	*t1 = *t2;
+	if (!pause) {
+		*worldTime += *delta;
+		player_1->distance += car_1->speed * *delta;
+		player_1->score += road.speed * (*delta) / 100;
+	}
+}
+
+void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *player_1, double *worldTime, int *pause, struct background *background, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, int *t1, int* t2, double* delta, struct road road) {
 	while (SDL_PollEvent(event)) {
 		switch (event->type) {
 		case SDL_KEYDOWN:
@@ -210,7 +287,15 @@ void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *pla
 				printf("%d", *pause);
 				break;
 			}
-			keyup(event, car_1, quit);
+			if (event->key.keysym.sym == 's') save(*background, *car_1, *player_1, *worldTime);
+			if (event->key.keysym.sym == 'l') {
+				*pause = 1;
+				load(background, car_1, player_1, worldTime, t1, charset, screen, renderer, scrtex, event, pause);
+				update_time(t1, t2, delta, worldTime, player_1, car_1, road, *pause);
+				*pause = 0;
+				break;
+			}
+			if (!(*pause)) keyup(event, car_1, quit);
 			break;
 		case SDL_QUIT:
 			*quit = 1;
@@ -289,17 +374,6 @@ int load_graphics(int img_number, SDL_Surface** img[], const char paths[][100], 
 	return 0;
 }
 
-void time(int* t1, int* t2, double* delta, double* worldTime, struct player *player_1, struct car *car_1, struct road road, int pause) {
-	*t2 = SDL_GetTicks();
-	*delta = (*t2 - *t1) * 0.001;
-	*t1 = *t2;
-	if (!pause) {
-		*worldTime += *delta;
-		player_1->distance += car_1->speed * *delta;
-		player_1->score += road.speed * (*delta) / 100;
-	}
-}
-
 void gameover(SDL_Surface** screen, SDL_Surface** charset, SDL_Renderer* renderer, SDL_Texture* scrtex, SDL_Event* event,struct player* player_1, struct car* car_1) {
 	SDL_FillRect(*screen, NULL, SDL_MapRGB((*screen)->format, 0x00, 0x00, 0x00));
 	char text[128];
@@ -346,8 +420,9 @@ int main(int argc, char **argv) {
 	SDL_Texture *scrtex;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
-	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT-50,50,50, CAR_SPEED,0,0 };
+	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT*2/3,50,50, CAR_SPEED,0,0 };
 	struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH };
+	struct background background = { SCREEN_HEIGHT - 1739, SCREEN_HEIGHT - 1739 - 1739 };
 	struct player player_1 = { 0, 0 };
 
 	if (initialize(&window, &rc, &renderer, &screen, &scrtex) == 1) {
@@ -361,16 +436,14 @@ int main(int argc, char **argv) {
 	SDL_SetColorKey(charset, true, 0x000000);
 
 	t1 = SDL_GetTicks();
-	double start_pos1 = SCREEN_HEIGHT-1739;
-	double start_pos2 = SCREEN_HEIGHT - 1739 -1739;
 
 	while (!quit) {
-		time(&t1, &t2, &delta, &worldTime, &player_1, &car_1, road, pause); //get time and count distance
+		update_time(&t1, &t2, &delta, &worldTime, &player_1, &car_1, road, pause); //get time and count distance
 		if (!pause) {
 			SDL_FillRect(screen, NULL, CZARNY);
 
 			if (collisions(&car_1, &road, &screen, &charset, &player_1) == 0) {
-				render_road(delta, road, screen, road_graphics);
+				render_road(delta, road, screen, road_graphics, &background);
 				DrawSurface(screen, car_graphics, car_1.pos_x, car_1.pos_y);
 				print_info(worldTime, fps, charset, screen, renderer, scrtex, player_1.score);
 			}
@@ -380,7 +453,7 @@ int main(int argc, char **argv) {
 
 		}
 		// obs³uga zdarzeñ (o ile jakieœ zasz³y) / handling of events (if there were any)
-		controls(&event, &car_1, &quit, &player_1, &worldTime, &pause);
+		controls(&event, &car_1, &quit, &player_1, &worldTime, &pause, &background, charset, screen, renderer, scrtex, &t1, &t2, &delta, road);
 	}
 	// zwolnienie powierzchni / freeing all surfaces
 	free_surfaces(3, tab2, &scrtex, &screen, &window, &renderer);
