@@ -4,6 +4,7 @@
 #include<string.h>
 #include <time.h>
 #include <filesystem>
+#include<stdlib.h>
 
 namespace fs = std::filesystem;
 
@@ -12,12 +13,19 @@ extern "C" {
 #include"./SDL2-2.0.10/include/SDL_main.h"
 }
 
-#define SCREEN_WIDTH	800
+#define SCREEN_WIDTH	500
 #define SCREEN_HEIGHT	700
 
 //starting parameters
 #define ROAD_WIDTH 376
-#define CAR_SPEED 0.5
+#define CAR_SPEED 0.3
+#define ALLY_CAR_SPEED 200
+#define ENEMY_CAR_SPEED 120
+#define CAR_BRAKE_SPEED 380
+#define CAR_ACCELERATION_SPEED 620
+#define ROAD_SPEED 500
+#define ENEMY_SPEED 200
+#define ALLY_SPEED 200
 
 #define BACKGROUND_HEIGHT 11924
 
@@ -155,7 +163,7 @@ void free_surfaces(int count, SDL_Surface** tab[], SDL_Texture** scrtex, SDL_Sur
 	SDL_DestroyRenderer(*renderer);
 }
 
-void keydown(SDL_Event* event, struct car* car_1, int* quit){
+void keydown(SDL_Event* event, struct car* car_1, int* quit, struct road *road){
 	switch (event->key.keysym.sym) {
 	case SDLK_LEFT:
 		car_1->x_vel = -car_1->speed;
@@ -164,10 +172,12 @@ void keydown(SDL_Event* event, struct car* car_1, int* quit){
 		car_1->x_vel = car_1->speed;
 		break;
 	case SDLK_UP:
-		car_1->y_vel = -car_1->speed;
+		//car_1->y_vel = -car_1->speed;
+		road->speed = CAR_ACCELERATION_SPEED;
 		break;
 	case SDLK_DOWN:
-		car_1->y_vel = car_1->speed;
+		//car_1->y_vel = car_1->speed;
+		road->speed = CAR_BRAKE_SPEED;
 		break;
 	case SDLK_ESCAPE:
 		*quit = 1;
@@ -176,7 +186,7 @@ void keydown(SDL_Event* event, struct car* car_1, int* quit){
 	}
 }
 
-void keyup(SDL_Event* event, struct car* car_1, int* quit) {
+void keyup(SDL_Event* event, struct car* car_1, int* quit, struct road* road) {
 	switch (event->key.keysym.sym) {
 	case SDLK_LEFT:
 		if (car_1->x_vel < 0)
@@ -187,12 +197,14 @@ void keyup(SDL_Event* event, struct car* car_1, int* quit) {
 			car_1->x_vel = 0;
 		break;
 	case SDLK_UP:
-		if (car_1->y_vel < 0)
-			car_1->y_vel = 0;
+		//if (car_1->y_vel < 0)
+			//car_1->y_vel = 0;
+		road->speed = ROAD_SPEED;
 		break;
 	case SDLK_DOWN:
-		if (car_1->y_vel > 0)
-			car_1->y_vel = 0;
+		//if (car_1->y_vel > 0)
+		//	car_1->y_vel = 0;
+		road->speed = ROAD_SPEED;
 		break;
 	default:
 		break;
@@ -276,11 +288,11 @@ void update_time(int* t1, int* t2, double* delta, double* worldTime, struct play
 	}
 }
 
-void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *player_1, double *worldTime, int *pause, struct background *background, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, int *t1, int* t2, double* delta, struct road road) {
+void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *player_1, double *worldTime, int *pause, struct background *background, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, int *t1, int* t2, double* delta, struct road *road) {
 	while (SDL_PollEvent(event)) {
 		switch (event->type) {
 		case SDL_KEYDOWN:
-			if (!(*pause)) keydown(event, car_1, quit);
+			if (!(*pause)) keydown(event, car_1, quit, road);
 			break;
 		case SDL_KEYUP:
 			if (event->key.keysym.sym == 'n') newgame(player_1, car_1, worldTime);
@@ -293,11 +305,11 @@ void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *pla
 			if (event->key.keysym.sym == 'l') {
 				*pause = 1;
 				load(background, car_1, player_1, worldTime, t1, charset, screen, renderer, scrtex, event, pause);
-				update_time(t1, t2, delta, worldTime, player_1, car_1, road, *pause);
+				update_time(t1, t2, delta, worldTime, player_1, car_1, *road, *pause);
 				*pause = 0;
 				break;
 			}
-			if (!(*pause)) keyup(event, car_1, quit);
+			if (!(*pause)) keyup(event, car_1, quit, road);
 			break;
 		case SDL_QUIT:
 			*quit = 1;
@@ -409,18 +421,51 @@ int collisions(struct car* car_1, struct road *road, SDL_Surface** screen, SDL_S
 	return 0;
 }
 
-void change_road_width(struct player player_1, struct road* road) {
-	static double i = 3503 - SCREEN_HEIGHT / 3;
-	static double j = 11014 - SCREEN_HEIGHT / 3;
+void change_road_width(struct player player_1, struct road* road, double delta) {
 	if ((int)player_1.distance%BACKGROUND_HEIGHT > 3504 - SCREEN_HEIGHT / 3 && (int)player_1.distance%BACKGROUND_HEIGHT < 4384 - SCREEN_HEIGHT / 3) {
-		if (floor(player_1.distance)!=i) road->width -= (floor(player_1.distance) - i) * 100 / 450;
+		road->width -= delta*road->speed * 100 / 450;
 	}
-	i = floor(player_1.distance);
 	if ((int)player_1.distance % BACKGROUND_HEIGHT > 11015 - SCREEN_HEIGHT / 3 && (int)player_1.distance % BACKGROUND_HEIGHT < BACKGROUND_HEIGHT - SCREEN_HEIGHT / 3) {
-		if (floor(player_1.distance) != j) road->width += (floor(player_1.distance) - j) * 100 / 450;
+		road->width += delta*road->speed * 100 / 450;
 		if (road->width > ROAD_WIDTH) road->width = ROAD_WIDTH;
 	}
-	j = floor(player_1.distance);
+}
+
+void render_enemy_car(SDL_Surface *screen, SDL_Surface *enemy_car_graphics, double delta, struct road players_road) {
+	static struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH };
+	static struct player enemy = {0, SCREEN_HEIGHT*2/3+50};
+	static struct car enemy_car = { rand() % (int)(road.width - (SCREEN_WIDTH / 2 - road.width / 2)) + (SCREEN_WIDTH / 2 - road.width / 2),-50,50,50, ENEMY_CAR_SPEED,0,0 };
+	static int right = 1;
+	DrawSurface(screen, enemy_car_graphics, enemy_car.pos_x, enemy_car.pos_y);
+	change_road_width(enemy, &road, delta);
+	enemy_car.pos_y += ENEMY_SPEED * delta;
+	if (right) enemy_car.pos_x += enemy_car.speed * delta;
+	else if (!right) enemy_car.pos_x -= enemy_car.speed * delta;
+	if (enemy_car.pos_x > (SCREEN_WIDTH / 2 + road.width / 2) - 50) right = 0;
+	else if (enemy_car.pos_x < (SCREEN_WIDTH / 2 - road.width / 2) + 50) right = 1;
+	if (enemy_car.pos_y > SCREEN_HEIGHT) {
+		enemy_car.pos_y = -50;
+		enemy_car.pos_x = rand() % (int)(SCREEN_WIDTH/2 + road.width/2 - (SCREEN_WIDTH / 2 - road.width / 2)) + (SCREEN_WIDTH / 2 - road.width / 2);
+	}
+	enemy.distance += delta * players_road.speed;
+}
+void render_ally_car(SDL_Surface* screen, SDL_Surface* ally_car_graphics, double delta, struct road players_road) {
+	static struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH };
+	static struct player enemy = { 0, SCREEN_HEIGHT * 2 / 3 + 100 };
+	static struct car ally_car = { rand() % (int)(road.width - (SCREEN_WIDTH / 2 - road.width / 2)) + (SCREEN_WIDTH / 2 - road.width / 2),-400,50,50, ALLY_CAR_SPEED,0,0 };
+	static int right = 1;
+	DrawSurface(screen, ally_car_graphics, ally_car.pos_x, ally_car.pos_y);
+	change_road_width(enemy, &road, delta); 
+	ally_car.pos_y += ALLY_SPEED * delta;
+	if (right) ally_car.pos_x += ally_car.speed * delta;
+	else if (!right) ally_car.pos_x -= ally_car.speed * delta;
+	if (ally_car.pos_x > (SCREEN_WIDTH / 2 + road.width / 2) - 50) right = 0;
+	else if (ally_car.pos_x < (SCREEN_WIDTH / 2 - road.width / 2) + 50) right = 1;
+	if (ally_car.pos_y > SCREEN_HEIGHT) {
+		ally_car.pos_y = -50;
+		ally_car.pos_x = rand() % (int)(SCREEN_WIDTH / 2 + road.width / 2 - (SCREEN_WIDTH / 2 - road.width / 2)) + (SCREEN_WIDTH / 2 - road.width / 2);
+	}
+	enemy.distance += delta * players_road.speed;
 }
 
 #ifdef __cplusplus
@@ -430,7 +475,7 @@ int main(int argc, char **argv) {
 	int t1, t2, quit = 0, frames = 0, rc, pause = 0, pausetime = 0;
 	double delta, worldTime = 0, fpsTimer = 0, fps = 0;
 	SDL_Event event;
-	SDL_Surface *screen, *charset, *car_graphics, *road_graphics;
+	SDL_Surface *screen, *charset, *car_graphics, *road_graphics, *enemy_car_graphics, *ally_car_graphics;
 	SDL_Texture *scrtex;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
@@ -444,23 +489,26 @@ int main(int argc, char **argv) {
 	}
 
 	// wczytanie obrazkow
-	SDL_Surface** tab2[3] = {&charset, &car_graphics, &road_graphics};
-	const char paths[3][100] = {"./cs8x8.bmp", "./car2.bmp", "./road5.bmp"};
-	load_graphics(3, tab2, paths, &screen, &scrtex, &window, &renderer);
+	SDL_Surface** tab2[5] = {&charset, &car_graphics, &road_graphics, &enemy_car_graphics, &ally_car_graphics};
+	const char paths[5][100] = {"./cs8x8.bmp", "./car2.bmp", "./road5.bmp", "./enemy_car.bmp", "./ally_car.bmp"};
+	load_graphics(5, tab2, paths, &screen, &scrtex, &window, &renderer);
 	SDL_SetColorKey(charset, true, 0x000000);
 
 	t1 = SDL_GetTicks();
+	srand(time(NULL));
 
 	while (!quit) {
 		update_time(&t1, &t2, &delta, &worldTime, &player_1, &car_1, road, pause); //get time and count distance
-		change_road_width(player_1, &road);
+		change_road_width(player_1, &road, delta);
 		if (!pause) {
 			SDL_FillRect(screen, NULL, CZARNY);
 
 			if (collisions(&car_1, &road, &screen, &charset, &player_1) == 0) {
 				render_road(delta, road, screen, road_graphics, &background);
 				DrawSurface(screen, car_graphics, car_1.pos_x, car_1.pos_y);
-				DrawSurface(screen, car_graphics, road.pos_x + (road.width) / 2, car_1.pos_y); //do testu
+				DrawSurface(screen, ally_car_graphics, road.pos_x + (road.width) / 2, car_1.pos_y); //do testu
+				render_enemy_car(screen, enemy_car_graphics, delta, road);
+				render_ally_car(screen, ally_car_graphics, delta, road);
 				print_info(worldTime, fps, charset, screen, renderer, scrtex, player_1.score);
 			}
 			else {
@@ -469,7 +517,7 @@ int main(int argc, char **argv) {
 
 		}
 		// obs³uga zdarzeñ (o ile jakieœ zasz³y) / handling of events (if there were any)
-		controls(&event, &car_1, &quit, &player_1, &worldTime, &pause, &background, charset, screen, renderer, scrtex, &t1, &t2, &delta, road);
+		controls(&event, &car_1, &quit, &player_1, &worldTime, &pause, &background, charset, screen, renderer, scrtex, &t1, &t2, &delta, &road);
 	}
 	// zwolnienie powierzchni / freeing all surfaces
 	free_surfaces(3, tab2, &scrtex, &screen, &window, &renderer);
