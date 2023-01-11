@@ -16,8 +16,10 @@ extern "C" {
 #define SCREEN_HEIGHT	700
 
 //starting parameters
-#define ROAD_WIDTH 382
+#define ROAD_WIDTH 376
 #define CAR_SPEED 0.5
+
+#define BACKGROUND_HEIGHT 11924
 
 //colors
 #define CZARNY SDL_MapRGB(screen->format, 0x00, 0x00, 0x00)
@@ -40,7 +42,7 @@ struct road {
 	int pos_x;
 	int pos_y;
 	int speed;
-	int width;
+	double width;
 	//SDL_Surface *graphics;
 };
 
@@ -134,11 +136,11 @@ void render_road(double delta, struct road road, SDL_Surface *screen, SDL_Surfac
 	background->start_pos2 += road.speed * delta;
 
 
-	if (background->start_pos1 > 1739 + SCREEN_HEIGHT) {
-		background->start_pos1 = -1739;
+	if (background->start_pos1 > SCREEN_HEIGHT+BACKGROUND_HEIGHT/2) {
+		background->start_pos1 = SCREEN_HEIGHT - BACKGROUND_HEIGHT - BACKGROUND_HEIGHT / 2 ;
 	};
-	if (background->start_pos2 > 1739 + SCREEN_HEIGHT) {
-		background->start_pos2 = -1739;
+	if (background->start_pos2 > SCREEN_HEIGHT + BACKGROUND_HEIGHT/2) {
+		background->start_pos2 = SCREEN_HEIGHT - BACKGROUND_HEIGHT- BACKGROUND_HEIGHT / 2;
 	};
 	DrawSurface(screen, road_graphics, SCREEN_WIDTH / 2, background->start_pos1);
 	DrawSurface(screen, road_graphics, SCREEN_WIDTH / 2, background->start_pos2);
@@ -269,7 +271,7 @@ void update_time(int* t1, int* t2, double* delta, double* worldTime, struct play
 	*t1 = *t2;
 	if (!pause) {
 		*worldTime += *delta;
-		player_1->distance += car_1->speed * *delta;
+		player_1->distance += road.speed * *delta;
 		player_1->score += road.speed * (*delta) / 100;
 	}
 }
@@ -407,7 +409,19 @@ int collisions(struct car* car_1, struct road *road, SDL_Surface** screen, SDL_S
 	return 0;
 }
 
-
+void change_road_width(struct player player_1, struct road* road) {
+	static double i = 3503 - SCREEN_HEIGHT / 3;
+	static double j = 11014 - SCREEN_HEIGHT / 3;
+	if ((int)player_1.distance%BACKGROUND_HEIGHT > 3504 - SCREEN_HEIGHT / 3 && (int)player_1.distance%BACKGROUND_HEIGHT < 4384 - SCREEN_HEIGHT / 3) {
+		if (floor(player_1.distance)!=i) road->width -= (floor(player_1.distance) - i) * 100 / 450;
+	}
+	i = floor(player_1.distance);
+	if ((int)player_1.distance % BACKGROUND_HEIGHT > 11015 - SCREEN_HEIGHT / 3 && (int)player_1.distance % BACKGROUND_HEIGHT < BACKGROUND_HEIGHT - SCREEN_HEIGHT / 3) {
+		if (floor(player_1.distance) != j) road->width += (floor(player_1.distance) - j) * 100 / 450;
+		if (road->width > ROAD_WIDTH) road->width = ROAD_WIDTH;
+	}
+	j = floor(player_1.distance);
+}
 
 #ifdef __cplusplus
 extern "C"
@@ -422,7 +436,7 @@ int main(int argc, char **argv) {
 	SDL_Renderer *renderer;
 	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT*2/3,50,50, CAR_SPEED,0,0 };
 	struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH };
-	struct background background = { SCREEN_HEIGHT - 1739, SCREEN_HEIGHT - 1739 - 1739 };
+	struct background background = { SCREEN_HEIGHT - BACKGROUND_HEIGHT/2, SCREEN_HEIGHT - BACKGROUND_HEIGHT/2 - BACKGROUND_HEIGHT };
 	struct player player_1 = { 0, 0 };
 
 	if (initialize(&window, &rc, &renderer, &screen, &scrtex) == 1) {
@@ -431,7 +445,7 @@ int main(int argc, char **argv) {
 
 	// wczytanie obrazkow
 	SDL_Surface** tab2[3] = {&charset, &car_graphics, &road_graphics};
-	const char paths[3][100] = {"./cs8x8.bmp", "./car2.bmp", "./road_straight.bmp"};
+	const char paths[3][100] = {"./cs8x8.bmp", "./car2.bmp", "./road5.bmp"};
 	load_graphics(3, tab2, paths, &screen, &scrtex, &window, &renderer);
 	SDL_SetColorKey(charset, true, 0x000000);
 
@@ -439,12 +453,14 @@ int main(int argc, char **argv) {
 
 	while (!quit) {
 		update_time(&t1, &t2, &delta, &worldTime, &player_1, &car_1, road, pause); //get time and count distance
+		change_road_width(player_1, &road);
 		if (!pause) {
 			SDL_FillRect(screen, NULL, CZARNY);
 
 			if (collisions(&car_1, &road, &screen, &charset, &player_1) == 0) {
 				render_road(delta, road, screen, road_graphics, &background);
 				DrawSurface(screen, car_graphics, car_1.pos_x, car_1.pos_y);
+				DrawSurface(screen, car_graphics, road.pos_x + (road.width) / 2, car_1.pos_y); //do testu
 				print_info(worldTime, fps, charset, screen, renderer, scrtex, player_1.score);
 			}
 			else {
