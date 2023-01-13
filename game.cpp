@@ -30,6 +30,10 @@ extern "C" {
 
 #define BACKGROUND_HEIGHT 11924
 
+//objects
+#define ENEMY 0
+#define ALLY 1
+
 //colors
 #define CZARNY SDL_MapRGB(screen->format, 0x00, 0x00, 0x00)
 #define ZIELONY SDL_MapRGB(screen->format, 0x00, 0xFF, 0x00);
@@ -219,9 +223,10 @@ void keyup(SDL_Event* event, struct car* car_1, int* quit, struct road* road) {
 	}
 }
 
-void newgame(struct player* player_1, struct car* car_1, double * worldTime, struct npc *enemy, struct npc *ally, struct road *road, struct background *background) {
+void newgame(struct player* player_1, struct car* car_1, double * worldTime, struct npc *enemy, struct npc *ally, struct road *road, struct background *background, int *pause) {
 	player_1->score = 0;
 	player_1->distance = 0;
+	car_1->x_vel = 0;
 	car_1->pos_x = SCREEN_WIDTH / 2;
 	car_1->pos_y = SCREEN_HEIGHT * 2 / 3;
 	*worldTime = 0;
@@ -229,6 +234,7 @@ void newgame(struct player* player_1, struct car* car_1, double * worldTime, str
 	*background = { SCREEN_HEIGHT - BACKGROUND_HEIGHT / 2, SCREEN_HEIGHT - BACKGROUND_HEIGHT / 2 - BACKGROUND_HEIGHT };
 	*enemy = { {0,0}, { rand() % (int)(road->width - (SCREEN_WIDTH / 2 - road->width / 2)) + (SCREEN_WIDTH / 2 - road->width / 2),-50,50,50, ENEMY_CAR_SPEED,0,0 },{ SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH } };
 	*ally = { {0,0}, { rand() % (int)(road->width - (SCREEN_WIDTH / 2 - road->width / 2)) + (SCREEN_WIDTH / 2 - road->width / 2),-400,50,50, ALLY_CAR_SPEED,0,0 },{ SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH } };
+	*pause = 0;
 }
 
 void save(struct background background, struct car car, struct player player, double worldTime, struct npc enemy, struct npc ally, struct road road){
@@ -315,7 +321,10 @@ void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *pla
 			if (!(*pause)) keydown(event, car_1, quit, road);
 			break;
 		case SDL_KEYUP:
-			if (event->key.keysym.sym == 'n') newgame(player_1, car_1, worldTime, enemy, ally, road, background);
+			if (event->key.keysym.sym == 'n') {
+				newgame(player_1, car_1, worldTime, enemy, ally, road, background, pause);
+				break;
+			}
 			if (event->key.keysym.sym == 'p') {
 				*pause = (*pause + 1) % 2;
 				printf("%d", *pause);
@@ -338,8 +347,10 @@ void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *pla
 		}
 	}
 /* Update the car position */
+	if (!(*pause)){
 		car_1->pos_x += car_1->x_vel;
 		car_1->pos_y += car_1->y_vel;
+	}
 }
 
 void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, int score) {
@@ -347,7 +358,7 @@ void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface*
 		//DrawRectangle(screen, 4, 4, SCREEN_WIDTH - 8, 36, czerwony, niebieski);
 		//            "template for the second project, elapsed time = %.1lf s  %.0lf frames / s"
 	char text[128];
-	sprintf(text, "Szablon drugiego zadania, czas trwania = %.1lf s  %.0lf klatek / s", worldTime, fps);
+	sprintf(text, "Szymon Liszewski 193477, czas trwania = %.1lf s", worldTime);
 	DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 10, text, charset);
 	//	      "Esc - exit, \030 - faster, \031 - slower"
 	sprintf(text, "Esc - wyjscie, \030 - przyspieszenie, \031 - zwolnienie");
@@ -408,7 +419,7 @@ int load_graphics(int img_number, SDL_Surface** img[], const char paths[][100], 
 	return 0;
 }
 
-void gameover(SDL_Surface** screen, SDL_Surface** charset, SDL_Renderer* renderer, SDL_Texture* scrtex, SDL_Event* event,struct player* player_1, struct car* car_1) {
+void gameover(SDL_Surface** screen, SDL_Surface** charset, SDL_Renderer* renderer, SDL_Texture* scrtex, SDL_Event* event,struct player* player_1, struct car* car_1, int *pause) {
 	SDL_FillRect(*screen, NULL, SDL_MapRGB((*screen)->format, 0x00, 0x00, 0x00));
 	char text[128];
 	sprintf(text, "game over");
@@ -417,6 +428,7 @@ void gameover(SDL_Surface** screen, SDL_Surface** charset, SDL_Renderer* rendere
 	//		SDL_RenderClear(renderer);
 	SDL_RenderCopy(renderer, scrtex, NULL, NULL);
 	SDL_RenderPresent(renderer);
+	*pause = 1;
 }
 
 
@@ -481,10 +493,21 @@ void render_ally_car(SDL_Surface* screen, SDL_Surface* ally_car_graphics, double
 	}
 	ally->player.distance += delta * players_road.speed;
 }
-void car_collision(struct car players_car, struct car other_car, int *freeze) {
+
+void print_points_info(SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, char info[], int delta) {
+	
+}
+
+void car_collision(struct car players_car, struct car other_car, struct player *player, int npc_type) {
 	if (players_car.pos_x > other_car.pos_x - players_car.width / 2 - other_car.width / 2 && players_car.pos_x < other_car.pos_x + players_car.width / 2 + other_car.width / 2 && players_car.pos_y - players_car.height / 2 < other_car.pos_y + other_car.height / 2 && players_car.pos_y - players_car.height / 2 > other_car.pos_y + other_car.height / 2 - 4) {
-		*freeze = 1;
-		printf("collision");
+		if (npc_type == ALLY) player->freeze = 1;
+		else if (npc_type == ENEMY) {
+			if (player->score > 20)
+				player->score -= 20;
+			else
+				player->score = 0;
+		}
+	printf("collision");
 	}
 }
 
@@ -532,10 +555,11 @@ int main(int argc, char **argv) {
 				render_enemy_car(screen, enemy_car_graphics, delta, road, &enemy);
 				render_ally_car(screen, ally_car_graphics, delta, road, &ally);
 				print_info(worldTime, fps, charset, screen, renderer, scrtex, player_1.score);
-				car_collision(car_1, enemy.car, &(player_1.freeze));
+				car_collision(car_1, enemy.car, &player_1, ENEMY);
+				car_collision(car_1, ally.car, &player_1, ALLY);
 			}
 			else {
-				gameover(&screen, &charset, renderer, scrtex, &event, &player_1, &car_1);
+				gameover(&screen, &charset, renderer, scrtex, &event, &player_1, &car_1, &pause);
 			}
 
 		}
