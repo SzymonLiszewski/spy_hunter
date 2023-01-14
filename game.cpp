@@ -4,7 +4,8 @@
 #include<string.h>
 #include <time.h>
 #include <filesystem>
-#include<stdlib.h>
+#include <stdlib.h>
+#include <string.h>
 
 namespace fs = std::filesystem;
 
@@ -27,6 +28,7 @@ extern "C" {
 #define ENEMY_SPEED 170 //vertical speed
 #define ALLY_SPEED 170
 #define FREEZE_TIME 4 //freeze score after car hit
+#define CAR_HIT_DISTANCE 0 //distance that car moves after being hit
 
 #define BACKGROUND_HEIGHT 11924
 
@@ -353,7 +355,7 @@ void controls(SDL_Event* event, struct car* car_1, int* quit, struct player *pla
 	}
 }
 
-void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, int score) {
+void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, int score, char msg[], double *msg_time, double delta) {
 	// tekst informacyjny / info text
 		//DrawRectangle(screen, 4, 4, SCREEN_WIDTH - 8, 36, czerwony, niebieski);
 		//            "template for the second project, elapsed time = %.1lf s  %.0lf frames / s"
@@ -366,6 +368,20 @@ void print_info(double worldTime, double fps, SDL_Surface* charset, SDL_Surface*
 
 	sprintf(text, "score: %d", score);
 	DrawString(screen, screen->w / 2 - strlen(text) * 8 / 2, 36, text, charset);
+
+	if (*msg_time > 0) {
+		DrawString(screen, screen->w / 2 - strlen(msg) * 8 / 2, 70, msg, charset);
+		*msg_time -= delta;
+	}
+	else if (*msg_time <= 0) {
+		strcpy(msg, "");
+		*msg_time = 0;
+	}
+
+	sprintf(text, "a,b,c,d,e,");
+	DrawString(screen, screen->w/10*8, SCREEN_HEIGHT - 50, text, charset);
+	sprintf(text, "f,g,h,i,j,l");
+	DrawString(screen, screen->w / 10*8, SCREEN_HEIGHT - 35, text, charset);
 
 	SDL_UpdateTexture(scrtex, NULL, screen->pixels, screen->pitch);
 	//		SDL_RenderClear(renderer);
@@ -494,20 +510,56 @@ void render_ally_car(SDL_Surface* screen, SDL_Surface* ally_car_graphics, double
 	ally->player.distance += delta * players_road.speed;
 }
 
-void print_points_info(SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, char info[], int delta) {
-	
-}
-
-void car_collision(struct car players_car, struct car other_car, struct player *player, int npc_type) {
-	if (players_car.pos_x > other_car.pos_x - players_car.width / 2 - other_car.width / 2 && players_car.pos_x < other_car.pos_x + players_car.width / 2 + other_car.width / 2 && players_car.pos_y - players_car.height / 2 < other_car.pos_y + other_car.height / 2 && players_car.pos_y - players_car.height / 2 > other_car.pos_y + other_car.height / 2 - 4) {
-		if (npc_type == ALLY) player->freeze = 1;
-		else if (npc_type == ENEMY) {
+void car_collision(struct car* players_car, struct car* other_car, struct player* player, int npc_type, double delta, struct road road, SDL_Surface* charset, SDL_Surface* screen, SDL_Renderer* renderer, SDL_Texture* scrtex, char msg[], double *msg_time) {
+	if (players_car->pos_x > other_car->pos_x - players_car->width / 2 - other_car->width / 2 && players_car->pos_x < other_car->pos_x + players_car->width / 2 + other_car->width / 2 && players_car->pos_y - players_car->height / 2 < other_car->pos_y + other_car->height / 2 && players_car->pos_y - players_car->height / 2 > other_car->pos_y + other_car->height / 2 - 1) {
+		if (npc_type == ALLY) {
+			player->freeze = 1;
+			strcpy(msg, "udzerzenie w cywila: zatrzymanie wyniku na 5s");
+			*msg_time = 5;
+		}
+		/*else if (npc_type == ENEMY) {
 			if (player->score > 20)
 				player->score -= 20;
 			else
 				player->score = 0;
+		}*/
+		other_car->pos_y = players_car->pos_y - players_car->height / 2 - other_car->height / 2;
+	}
+	if (players_car->pos_y > other_car->pos_y - players_car->height / 2 - other_car->height / 2 && players_car->pos_y < other_car->pos_y + players_car->height / 2 + other_car->height / 2 && players_car->pos_x - players_car->width / 2 < other_car->pos_x + other_car->width / 2 && players_car->pos_x - players_car->width / 2 > other_car->pos_x + other_car->width / 2 - 1) {
+		if (players_car->x_vel >= 0) players_car->x_vel = 0.3;
+		else if (players_car->x_vel < 0) {
+			other_car->pos_x = players_car->pos_x - players_car->width / 2 - other_car->width / 2-CAR_HIT_DISTANCE;
+			if (npc_type == ALLY) {
+				player->freeze = 1;
+				strcpy(msg, "udzerzenie w cywila: zatrzymanie wyniku na 5s");
+				*msg_time = 5;
+			}
 		}
-	printf("collision");
+	}
+	if (players_car->pos_y > other_car->pos_y - players_car->height / 2 - other_car->height / 2 && players_car->pos_y < other_car->pos_y + players_car->height / 2 + other_car->height / 2 && players_car->pos_x + players_car->width / 2 > other_car->pos_x - other_car->width / 2 && players_car->pos_x + players_car->width / 2 < other_car->pos_x - other_car->width / 2 + 1) {
+		if (players_car->x_vel <= 0) players_car->x_vel = -0.3;
+		else if (players_car->x_vel > 0) {
+			other_car->pos_x = players_car->pos_x + players_car->width / 2 + other_car->width / 2+ CAR_HIT_DISTANCE;
+			if (npc_type == ALLY) {
+				player->freeze = 1;
+				strcpy(msg, "udzerzenie w samochod: zatrzymanie wyniku na 5s");
+				*msg_time = 5;
+			}
+		}
+	}
+	if (other_car->pos_x > SCREEN_WIDTH / 2 + road.width / 2 - other_car->width / 2 || other_car->pos_x < SCREEN_WIDTH / 2 - road.width / 2) {
+		other_car->pos_y = SCREEN_HEIGHT + other_car->height / 2 + other_car->width / 2;
+		if (npc_type == ENEMY) {
+			strcpy(msg, "wypchniecie przeciwnika: +50");
+			player->score += 50;
+			*msg_time = 5;
+		}
+		else if (npc_type == ALLY) {
+			strcpy(msg, "wypchniecie cywila: -50");
+			player->score -= 50;
+			if (player->score < 0) player->score = 0;
+			*msg_time = 5;
+		}
 	}
 }
 
@@ -522,13 +574,14 @@ int main(int argc, char **argv) {
 	SDL_Texture *scrtex;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
-	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT*2/3,50,50, CAR_SPEED,0,0 };
+	struct car car_1 = { SCREEN_WIDTH/2,SCREEN_HEIGHT*2/3,27,44, CAR_SPEED,0,0 };
 	struct road road = { SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, ROAD_SPEED, ROAD_WIDTH };
 	struct background background = { SCREEN_HEIGHT - BACKGROUND_HEIGHT/2, SCREEN_HEIGHT - BACKGROUND_HEIGHT/2 - BACKGROUND_HEIGHT };
 	struct player player_1 = { 0, 0 };
-	struct npc enemy = { {0,0}, { rand() % (int)(road.width - (SCREEN_WIDTH / 2 - road.width / 2)) + (SCREEN_WIDTH / 2 - road.width / 2),-50,50,50, ENEMY_CAR_SPEED,0,0 },{ SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH } };
-	struct npc ally = { {0,0}, { rand() % (int)(road.width - (SCREEN_WIDTH / 2 - road.width / 2)) + (SCREEN_WIDTH / 2 - road.width / 2),-400,50,50, ALLY_CAR_SPEED,0,0 },{ SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH } };
-
+	struct npc enemy = { {0,0}, { rand() % (int)(road.width - (SCREEN_WIDTH / 2 - road.width / 2)) + (SCREEN_WIDTH / 2 - road.width / 2),-50,27,41, ENEMY_CAR_SPEED,0,0 },{ SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH } };
+	struct npc ally = { {0,0}, { rand() % (int)(road.width - (SCREEN_WIDTH / 2 - road.width / 2)) + (SCREEN_WIDTH / 2 - road.width / 2),-400,26,32, ALLY_CAR_SPEED,0,0 },{ SCREEN_WIDTH / 2,SCREEN_HEIGHT / 2, 500, ROAD_WIDTH } };
+	char msg[128] = "";
+	double msg_time = 0;
 	if (initialize(&window, &rc, &renderer, &screen, &scrtex) == 1) {
 		return 1;
 	}
@@ -554,9 +607,9 @@ int main(int argc, char **argv) {
 				DrawSurface(screen, ally_car_graphics, road.pos_x + (road.width) / 2, car_1.pos_y); //do testu
 				render_enemy_car(screen, enemy_car_graphics, delta, road, &enemy);
 				render_ally_car(screen, ally_car_graphics, delta, road, &ally);
-				print_info(worldTime, fps, charset, screen, renderer, scrtex, player_1.score);
-				car_collision(car_1, enemy.car, &player_1, ENEMY);
-				car_collision(car_1, ally.car, &player_1, ALLY);
+				print_info(worldTime, fps, charset, screen, renderer, scrtex, player_1.score, msg, &msg_time, delta);
+				car_collision(&car_1, &enemy.car, &player_1, ENEMY, delta, road, charset, screen, renderer, scrtex, msg, &msg_time);
+				car_collision(&car_1, &ally.car, &player_1, ALLY, delta, road, charset, screen, renderer, scrtex, msg, &msg_time);
 			}
 			else {
 				gameover(&screen, &charset, renderer, scrtex, &event, &player_1, &car_1, &pause);
