@@ -4,4 +4,5 @@
 Implementation of Atari game Spy Hunters
 
 # Preview
-![obraz_2023-06-12_105116271](https://github.com/ATURYEN/spy_hunter/assets/110538257/f07292d6-018f-480e-be99-e6693debeaa1)
+
+![Zrzut ekranu 2023-06-12 105052](https://github.com/SzymonLiszewski/spy_hunter/assets/110538257/16b416b3-b04f-4e6e-834b-21c0ee901c93)
